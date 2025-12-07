@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Programación | Pasto.AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: white; }
+        .text-neon { color: #ccff00; text-shadow: 0 0 10px rgba(204, 255, 0, 0.5); }
+        .bg-neon { background-color: #ccff00; color: black; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .match-card { border-left: 4px solid #334155; transition: all 0.3s; }
+        .match-card.live { border-left-color: #ccff00; animation: pulse-border 2s infinite; }
+        .match-card.finished { border-left-color: #10b981; opacity: 0.8; }
+        
+        @keyframes pulse-border { 0% { box-shadow: -2px 0 10px rgba(204, 255, 0, 0.2); } 50% { box-shadow: -2px 0 20px rgba(204, 255, 0, 0.6); } 100% { box-shadow: -2px 0 10px rgba(204, 255, 0, 0.2); } }
+    </style>
+</head>
+<body class="pb-20">
+
+    <!-- NAV -->
+    <nav class="fixed top-0 w-full z-50 glass">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex items-center justify-between h-16">
+                <a href="/" class="flex items-center gap-2">
+                    <i class="fa-solid fa-bolt text-neon text-xl"></i>
+                    <span class="font-bold text-xl tracking-tight">PASTO.AI</span>
+                </a>
+                <div class="flex gap-4 text-sm font-bold">
+                    <a href="/" class="text-slate-400 hover:text-white transition">RANKING</a>
+                    <a href="/programacion" class="text-neon border-b-2 border-neon pb-1">PARTIDOS</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- HEADER -->
+    <div class="pt-24 pb-8 text-center px-4">
+        <h1 class="text-4xl font-extrabold uppercase mb-2">LA ARENA</h1>
+        <p class="text-slate-400 text-sm">Programación Oficial • Club Colombia</p>
+    </div>
+
+    <!-- LISTA DE PARTIDOS -->
+    <div class="max-w-3xl mx-auto px-4">
+        
+        {% if partidos|length == 0 %}
+            <div class="text-center py-10 glass rounded-xl">
+                <i class="fa-regular fa-calendar-xmark text-4xl text-slate-600 mb-3"></i>
+                <p class="text-slate-400">No hay partidos programados.</p>
+                <p class="text-xs text-slate-500">Dile al admin que inicie el torneo.</p>
+            </div>
+        {% else %}
+            
+            <div class="flex flex-col gap-4">
+                {% for partido in partidos %}
+                <!-- TARJETA DE PARTIDO -->
+                <div class="match-card glass p-4 rounded-r-xl relative overflow-hidden flex items-center {{ 'live' if partido.estado == 'pendiente' else 'finished' }}">
+                    
+                    <!-- Estado (Badge) -->
+                    <div class="absolute top-2 right-2">
+                        {% if partido.estado == 'pendiente' %}
+                            <span class="bg-red-500/20 text-red-400 text-[10px] font-bold px-2 py-0.5 rounded animate-pulse">● EN JUEGO</span>
+                        {% else %}
+                            <span class="bg-green-500/20 text-green-400 text-[10px] font-bold px-2 py-0.5 rounded">FINALIZADO</span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Hora -->
+                    <div class="text-center pr-4 border-r border-slate-700 min-w-[70px]">
+                        <div class="text-lg font-bold text-white">{{ partido.hora }}</div>
+                        <div class="text-[10px] text-slate-400 uppercase">Cancha {{ partido.cancha }}</div>
+                    </div>
+
+                    <!-- Versus -->
+                    <div class="flex-1 px-4 flex justify-between items-center text-sm md:text-base">
+                        <div class="text-right w-1/2 font-bold {{ 'text-neon' if partido.ganador_id == partido.jugador_1_id }}">
+                            {{ partido.jugador_1_nombre }}
+                        </div>
+                        
+                        <div class="px-3 font-mono text-slate-500 font-bold">
+                            {% if partido.marcador %}
+                                {{ partido.marcador }}
+                            {% else %}
+                                VS
+                            {% endif %}
+                        </div>
+                        
+                        <div class="text-left w-1/2 font-bold {{ 'text-neon' if partido.ganador_id == partido.jugador_2_id }}">
+                            {{ partido.jugador_2_nombre }}
+                        </div>
+                    </div>
+
+                </div>
+                {% endfor %}
+            </div>
+
+        {% endif %}
+    </div>
+
+</body>
+</html>

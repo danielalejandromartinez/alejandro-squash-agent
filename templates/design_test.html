@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circuito Pasto.AI - Concepto Visual</title>
+    <!-- Tailwind CSS (Estilos Modernos) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        /* Tipografía futurista */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+
+        /* Color Neón Squash */
+        .text-neon { color: #ccff00; text-shadow: 0 0 10px rgba(204, 255, 0, 0.5); }
+        .bg-neon { background-color: #ccff00; box-shadow: 0 0 15px rgba(204, 255, 0, 0.4); }
+        .border-neon { border-color: #ccff00; }
+
+        /* Efecto Vidrio */
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Animación suave de las tarjetas */
+        .player-card {
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .player-card:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+        
+        /* El degradado sobre la foto */
+        .gradient-overlay {
+            background: linear-gradient(to top, rgba(15, 23, 42, 1) 0%, rgba(15, 23, 42, 0.6) 40%, rgba(15, 23, 42, 0) 100%);
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen">
+
+    <!-- NAVBAR FLOTANTE -->
+    <nav class="fixed top-0 w-full z-50 glass border-b-0">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-bolt text-neon text-xl"></i>
+                    <span class="font-bold text-xl tracking-tight">PASTO.AI <span class="text-xs text-gray-400 font-light">CIRCUITO</span></span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="hidden md:flex text-sm text-gray-300 gap-4">
+                        <a href="#" class="hover:text-neon transition">Ranking</a>
+                        <a href="#" class="hover:text-neon transition">Torneos</a>
+                        <a href="#" class="hover:text-neon transition">Reglas</a>
+                    </div>
+                    <button class="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-full text-sm font-medium transition backdrop-blur-md border border-white/10">
+                        <i class="fa-brands fa-whatsapp mr-2"></i> Alejandro
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- HEADER DE ESTADÍSTICAS (TICKER) -->
+    <div class="pt-24 pb-8 px-4 text-center">
+        <h1 class="text-4xl md:text-6xl font-extrabold mb-2 tracking-tighter">
+            THE <span class="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">WALL OF FAME</span>
+        </h1>
+        <p class="text-slate-400 text-sm md:text-base max-w-2xl mx-auto">
+            Ranking oficial en tiempo real. Sistema ELO. <span class="text-neon">Temporada 2025</span>
+        </p>
+    </div>
+
+    <!-- GRID DE JUGADORES (ESTILO MIDJOURNEY) -->
+    <div class="max-w-7xl mx-auto px-4 pb-20">
+        <!-- Grid Responsivo: 2 columnas en móvil, 4 o 5 en PC -->
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+
+            <!-- TARJETA #1 (EL LÍDER) - Destacada -->
+            <div class="player-card group relative h-80 md:h-96 rounded-2xl overflow-hidden cursor-pointer border border-yellow-500/30">
+                <!-- Foto (Placeholder) -->
+                <img src="https://images.unsplash.com/photo-1599566150163-29194dcaad36?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" 
+                     class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 grayscale group-hover:grayscale-0" alt="Jugador">
+                
+                <!-- Badge #1 -->
+                <div class="absolute top-3 left-3 bg-yellow-500 text-black font-black px-3 py-1 rounded-md text-xs shadow-lg flex items-center gap-1">
+                    <i class="fa-solid fa-crown"></i> #1
+                </div>
+
+                <!-- Overlay Info -->
+                <div class="absolute inset-0 gradient-overlay flex flex-col justify-end p-4">
+                    <div class="transform transition-transform duration-300 translate-y-2 group-hover:translate-y-0">
+                        <div class="flex justify-between items-end mb-1">
+                            <h3 class="text-lg md:text-2xl font-bold leading-none">Daniel<br>Martínez</h3>
+                            <div class="text-right">
+                                <span class="block text-2xl md:text-3xl font-black text-neon">1503</span>
+                                <span class="text-xs text-gray-400">ELO PTS</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 text-xs text-gray-300 mb-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-75">
+                            <span class="bg-green-500/20 text-green-400 px-2 py-0.5 rounded">Primera</span>
+                            <span>🔥 Racha: 5W</span>
+                        </div>
+                        <!-- Botón de acción oculto -->
+                        <button class="w-full bg-white text-slate-900 font-bold py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-neon hover:text-black">
+                            VER PERFIL
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TARJETA #2 -->
+            <div class="player-card group relative h-64 md:h-80 rounded-2xl overflow-hidden cursor-pointer border border-white/5">
+                <img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" 
+                     class="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 opacity-80 group-hover:opacity-100" alt="Jugador">
+                
+                <div class="absolute top-3 left-3 bg-slate-800/80 backdrop-blur text-white font-bold px-2 py-1 rounded text-xs">
+                    #2
+                </div>
+
+                <div class="absolute inset-0 gradient-overlay flex flex-col justify-end p-4">
+                    <div class="transform transition-transform duration-300 translate-y-2 group-hover:translate-y-0">
+                        <div class="flex justify-between items-end mb-1">
+                            <h3 class="text-lg font-bold">Juan<br>Pérez</h3>
+                            <div class="text-right">
+                                <span class="block text-xl font-bold text-white group-hover:text-neon transition-colors">1401</span>
+                            </div>
+                        </div>
+                        <div class="h-0 group-hover:h-auto overflow-hidden transition-all">
+                            <p class="text-xs text-gray-400 mt-1">Último partido: Perdió vs Daniel</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TARJETA #3 -->
+            <div class="player-card group relative h-64 md:h-80 rounded-2xl overflow-hidden cursor-pointer border border-white/5">
+                <img src="https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" 
+                     class="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 opacity-80 group-hover:opacity-100" alt="Jugador">
+                
+                <div class="absolute top-3 left-3 bg-slate-800/80 backdrop-blur text-white font-bold px-2 py-1 rounded text-xs">
+                    #3
+                </div>
+
+                <div class="absolute inset-0 gradient-overlay flex flex-col justify-end p-4">
+                    <div class="transform transition-transform duration-300 translate-y-2 group-hover:translate-y-0">
+                        <div class="flex justify-between items-end mb-1">
+                            <h3 class="text-lg font-bold">Carlos<br>Ruiz</h3>
+                            <div class="text-right">
+                                <span class="block text-xl font-bold text-white group-hover:text-neon transition-colors">1350</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TARJETA #4 (Femenino) -->
+            <div class="player-card group relative h-64 md:h-80 rounded-2xl overflow-hidden cursor-pointer border border-white/5">
+                <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" 
+                     class="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 opacity-80 group-hover:opacity-100" alt="Jugador">
+                
+                <div class="absolute top-3 left-3 bg-slate-800/80 backdrop-blur text-white font-bold px-2 py-1 rounded text-xs">
+                    #4
+                </div>
+
+                <div class="absolute inset-0 gradient-overlay flex flex-col justify-end p-4">
+                    <div class="transform transition-transform duration-300 translate-y-2 group-hover:translate-y-0">
+                        <div class="flex justify-between items-end mb-1">
+                            <h3 class="text-lg font-bold">Maria<br>Gómez</h3>
+                            <div class="text-right">
+                                <span class="block text-xl font-bold text-white group-hover:text-neon transition-colors">1290</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- BOTÓN FLOTANTE MÓVIL -->
+    <div class="fixed bottom-6 right-6 md:hidden z-50">
+        <button class="bg-neon text-black rounded-full p-4 shadow-lg shadow-green-500/20 hover:scale-110 transition">
+            <i class="fa-brands fa-whatsapp text-2xl"></i>
+        </button>
+    </div>
+
+</body>
+</html>

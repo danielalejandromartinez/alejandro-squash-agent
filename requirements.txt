@@ -6,4 +6,4 @@ sqlalchemy
 openai
 python-dotenv
 websockets
-requests  <--- ¡ASEGÚRATE DE QUE ESTA LÍNEA ESTÉ AHÍ!
+requests

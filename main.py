@@ -195,7 +195,7 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
             """
             
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-3.5-turbo-1106",
                 messages=[{"role": "system", "content": prompt}],
                 response_format={ "type": "json_object" }
             )

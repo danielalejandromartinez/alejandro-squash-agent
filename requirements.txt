@@ -7,3 +7,4 @@ openai
 python-dotenv
 websockets
 requests
+psycopg2-binary

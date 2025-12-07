@@ -20,11 +20,9 @@ load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
 
-# --- NUEVO: CONFIGURACIÓN DE WHATSAPP ---
-# Pega aquí el Token Temporal de Meta (el largo que empieza con EAA...)
-WHATSAPP_TOKEN = "EAAKTTJXNn20BQIbXpWnSCG3Avzj9Q2GsfxBFcSUmYrf2zQDI45Lz6KjcmeCiFxCD8twZCJzdF205QWxY22HsaAm8DiClTOa8CheUDD9wFy0a4ZACcwlEhlzXTvJikOByRfmjtFb7vGVPw7ZBBAZCPmpLMW8UMTOXUaHl46TO52iLr5bHKqqbbShPYrExlPBXzhUurkMmbO85SMZAcsJGuRJTcZCAQPXQNSmoa2G1TcsO8bgdfnr6fnAECT1VoSZCTTQCkhRZBkwZC62BIOnYXyi24cLy0A54ZD" 
-# El ID del teléfono de prueba (lo tienes en la página de Meta)
-PHONE_NUMBER_ID = "110811741996306" 
+# --- NUEVO: CONFIGURACIÓN DE WHATSAPP (Lee de Render) ---
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
 # 3. Configurar Base de Datos (Usa la de Render si existe, si no, usa la local)
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./club_squash.db")

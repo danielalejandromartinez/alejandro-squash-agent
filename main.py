@@ -1,6 +1,6 @@
 import os
 import json
-import requests # <--- NUEVO: Para poder enviar mensajes a WhatsApp
+import requests 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Depends
 from fastapi.templating import Jinja2Templates

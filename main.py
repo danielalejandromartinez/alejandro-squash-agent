@@ -26,9 +26,16 @@ WHATSAPP_TOKEN = "EAAKTTJXNn20BQIbXpWnSCG3Avzj9Q2GsfxBFcSUmYrf2zQDI45Lz6KjcmeCiF
 # El ID del teléfono de prueba (lo tienes en la página de Meta)
 PHONE_NUMBER_ID = "110811741996306" 
 
-# 3. Configurar Base de Datos
-DATABASE_URL = "sqlite:///./club_squash.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+# 3. Configurar Base de Datos (Usa la de Render si existe, si no, usa la local)
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./club_squash.db")
+
+# Render usa 'postgresql', pero SQLAlchemy necesita 'postgresql+psycopg2'
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+    engine = create_engine(DATABASE_URL)
+else:
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(bind=engine)
 

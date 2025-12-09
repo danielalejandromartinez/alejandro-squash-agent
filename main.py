@@ -4,9 +4,10 @@ import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Depends
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
-from models import Base, Player, Match, WhatsAppUser
+from models import Base, Player, Match, WhatsAppUser, Club, Tournament
 from elo import calculate_elo
 from pydantic import BaseModel
 from openai import OpenAI
@@ -14,12 +15,11 @@ from openai import OpenAI
 # --- IMPORTAMOS EL CEREBRO NUEVO ---
 from prompts import obtener_system_prompt
 
-# --- CONFIGURACIÓN INICIAL ---
+# --- CONFIGURACIÓN ---
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
 
-# LECTURA DE VARIABLES DE RENDER
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
@@ -52,51 +52,53 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# --- FUNCIÓN DE ENVÍO ---
 def enviar_whatsapp(telefono_destino, mensaje):
     url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "messaging_product": "whatsapp",
-        "to": telefono_destino,
-        "type": "text",
-        "text": {"body": mensaje}
-    }
-    try:
-        # Imprimimos para ver en el log si funciona
-        print(f"📤 Respondiendo a {telefono_destino}...")
-        response = requests.post(url, headers=headers, json=data)
-        print(f"👉 Facebook Status: {response.status_code}")
-    except Exception as e:
-        print(f"❌ Error enviando: {e}")
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
+    data = {"messaging_product": "whatsapp", "to": telefono_destino, "type": "text", "text": {"body": mensaje}}
+    try: requests.post(url, headers=headers, json=data)
+    except Exception as e: print(f"❌ Error enviando: {e}")
+
+# --- FUNCIÓN DE INTELIGENCIA DE CONTEXTO (EL CHISME) ---
+def generar_contexto_club(db: Session):
+    # 1. Buscar si hay torneos activos
+    torneo = db.query(Tournament).filter(Tournament.status == "inscription").first()
+    info_torneo = "No hay torneos activos en este momento."
+    if torneo:
+        inscritos = len(torneo.smart_data.get("inscritos", []))
+        info_torneo = f"TORNEO ACTIVO: '{torneo.name}'. Estado: Inscripciones Abiertas. Inscritos actuales: {inscritos}."
+    
+    # 2. Top 3 del Ranking
+    top_players = db.query(Player).order_by(Player.elo.desc()).limit(3).all()
+    ranking_txt = ", ".join([f"{p.name} ({p.elo})" for p in top_players])
+    
+    return f"""
+    - {info_torneo}
+    - Top 3 Ranking Global: {ranking_txt}
+    """
 
 # --- RUTAS ---
+@app.on_event("startup")
+def startup_event():
+    # Crear el Club por defecto si no existe (Para el SaaS)
+    db = SessionLocal()
+    club = db.query(Club).first()
+    if not club:
+        nuevo_club = Club(name="Club Demo", admin_phone="573152405542")
+        db.add(nuevo_club)
+        db.commit()
+    db.close()
+
 @app.get("/")
 async def ver_ranking(request: Request, db: Session = Depends(get_db)):
     jugadores = db.query(Player).order_by(Player.elo.desc()).all()
     return templates.TemplateResponse("ranking.html", {"request": request, "jugadores": jugadores})
 
-@app.get("/programacion")
-async def ver_partidos(request: Request, db: Session = Depends(get_db)):
-    partidos = db.query(Match).order_by(Match.timestamp.desc()).all()
-    return templates.TemplateResponse("partidos.html", {"request": request, "partidos": partidos})
-
-@app.get("/design")
-async def ver_diseno(request: Request):
-    return templates.TemplateResponse("design_test.html", {"request": request})
-
 @app.websocket("/ws/ranking")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
-    try:
-        while True: await websocket.receive_text()
+    try: while True: await websocket.receive_text()
     except WebSocketDisconnect: manager.disconnect(websocket)
-
-@app.get("/ping")
-async def ping(): return {"mensaje": "Alejandro vivo"}
 
 # --- WEBHOOK ---
 VERIFY_TOKEN = "alejandro_squash"
@@ -104,8 +106,7 @@ VERIFY_TOKEN = "alejandro_squash"
 @app.get("/webhook")
 async def verify_webhook(request: Request):
     params = request.query_params
-    if params.get("hub.verify_token") == VERIFY_TOKEN:
-        return int(params.get("hub.challenge"))
+    if params.get("hub.verify_token") == VERIFY_TOKEN: return int(params.get("hub.challenge"))
     return {"error": "Token invalido"}
 
 @app.post("/webhook")
@@ -117,47 +118,41 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
             message = entry['messages'][0]
             telefono = message['from']
             texto_usuario = message['text']['body']
-            print(f"📩 Mensaje recibido de {telefono}: {texto_usuario}")
+            print(f"📩 Mensaje: {texto_usuario}")
 
-            # 1. PENSAR (USANDO EL NUEVO PROMPTS.PY)
-            # Aquí es donde le decimos que lea el manual
+            # 1. GENERAR CONTEXTO (Leer la mente del club)
+            contexto = generar_contexto_club(db)
+
+            # 2. PENSAR (Con el contexto inyectado)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo-1106",
                 messages=[
-                    {"role": "system", "content": obtener_system_prompt()}, # <--- CONECTADO
+                    {"role": "system", "content": obtener_system_prompt(contexto)}, # <--- AQUÍ ENTRA EL CONTEXTO
                     {"role": "user", "content": texto_usuario}
                 ],
                 response_format={ "type": "json_object" }
             )
             decision = json.loads(response.choices[0].message.content)
             
-            # Ver qué decidió la IA en el log
-            print(f"🤖 Decisión IA: {decision['accion']} - Pensamiento: {decision.get('pensamiento')}")
-
-            # 2. ACTUAR
+            # 3. ACTUAR
             respuesta_texto = decision.get('respuesta_whatsapp', "Procesado.")
             accion = decision.get('accion')
             datos = decision.get('datos', {})
 
+            # --- ACCIONES BÁSICAS ---
             if accion == 'crear_jugador':
                 nombre = datos.get('nombre')
-                # Verificamos si el nombre existe
                 existe = db.query(Player).filter(Player.name == nombre).first()
                 if not existe:
-                    # Buscamos el "Padrino" (Dueño del celular)
+                    # Asignar al Club por defecto (ID 1)
                     padrino = db.query(WhatsAppUser).filter_by(phone_number=telefono).first()
                     if not padrino:
-                        # Si es primera vez, creamos al dueño del celular
                         padrino = WhatsAppUser(phone_number=telefono)
                         db.add(padrino); db.commit()
                     
-                    # Creamos al jugador vinculado al dueño
-                    nuevo = Player(name=nombre, owner_id=padrino.id)
+                    nuevo = Player(name=nombre, owner_id=padrino.id, club_id=1)
                     db.add(nuevo); db.commit()
                     await manager.broadcast("update")
-                else:
-                    # La IA ya generó un mensaje de error amable
-                    pass
 
             elif accion == 'registrar_partido':
                 g = db.query(Player).filter(Player.name == datos.get('ganador')).first()
@@ -169,9 +164,22 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
                     db.add(match); db.commit()
                     await manager.broadcast("update")
 
-            # 3. RESPONDER
+            # --- ACCIONES DE TORNEO (NUEVO) ---
+            elif accion == 'crear_torneo':
+                # Crear el torneo en la BD
+                nuevo_torneo = Tournament(
+                    name=datos.get('nombre'), 
+                    club_id=1, 
+                    status="inscription",
+                    smart_data={"inscritos": []} # Lista vacía inicial
+                )
+                db.add(nuevo_torneo)
+                db.commit()
+                respuesta_texto = f"🏆 ¡Torneo '{datos.get('nombre')}' creado! Las inscripciones están abiertas."
+
+            # 4. RESPONDER
             enviar_whatsapp(telefono, respuesta_texto)
 
     except Exception as e:
-        print(f"Error procesando: {e}")
+        print(f"Error: {e}")
     return {"status": "ok"}

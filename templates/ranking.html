@@ -80,10 +80,15 @@
         </div>
     </div>
 
-    <!-- SCRIPT MÁGICO (Para que la TV se actualice sola) -->
+    <!-- SCRIPT MÁGICO MULTI-CLUB -->
     <script>
+        // Obtenemos el ID del club desde la URL o variable
+        // Jinja2 inyecta el ID aquí:
+        const clubId = "{{ club_id }}"; 
+        
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/ranking`;
+        // Nos conectamos al canal específico de este club
+        const wsUrl = `${protocol}//${window.location.host}/ws/${clubId}`;
         const socket = new WebSocket(wsUrl);
 
         socket.onmessage = function(event) {

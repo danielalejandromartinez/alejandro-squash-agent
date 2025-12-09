@@ -206,3 +206,11 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Error: {e}")
     return {"status": "ok"}
+
+# --- HERRAMIENTA DE REINICIO (SOLO PARA USO TÉCNICO) ---
+@app.get("/nuclear-reset")
+def nuclear_reset():
+    # Esto borra las tablas viejas y crea las nuevas con la estructura de Torneos
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    return {"status": "✅ Base de datos renovada. ¡Alejandro está listo para los torneos!"}

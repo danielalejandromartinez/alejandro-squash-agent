@@ -12,7 +12,7 @@ from elo import calculate_elo
 from pydantic import BaseModel
 from openai import OpenAI
 
-# --- IMPORTAMOS EL CEREBRO ---
+# --- IMPORTAMOS EL CEREBRO NUEVO ---
 from prompts import obtener_system_prompt
 
 # --- CONFIGURACIÓN ---
@@ -40,15 +40,25 @@ templates = Jinja2Templates(directory="templates")
 # --- UTILIDADES ---
 def get_db():
     db = SessionLocal()
-    try: yield db
-    finally: db.close()
+    try:
+        yield db
+    finally:
+        db.close()
 
 class ConnectionManager:
-    def __init__(self): self.active_connections = []
-    async def connect(self, websocket: WebSocket): await websocket.accept(); self.active_connections.append(websocket)
-    def disconnect(self, websocket: WebSocket): self.active_connections.remove(websocket)
+    def __init__(self):
+        self.active_connections = []
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+    
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+    
     async def broadcast(self, message: str):
-        for connection in self.active_connections: await connection.send_text(message)
+        for connection in self.active_connections:
+            await connection.send_text(message)
 
 manager = ConnectionManager()
 
@@ -103,11 +113,15 @@ async def ver_ranking(request: Request, db: Session = Depends(get_db)):
     jugadores = db.query(Player).order_by(Player.elo.desc()).all()
     return templates.TemplateResponse("ranking.html", {"request": request, "jugadores": jugadores})
 
+# --- AQUÍ ESTABA EL ERROR, YA ESTÁ CORREGIDO (IDENTACIÓN) ---
 @app.websocket("/ws/ranking")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
-    try: while True: await websocket.receive_text()
-    except WebSocketDisconnect: manager.disconnect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 # --- HERRAMIENTA DE REINICIO ---
 @app.get("/nuclear-reset")
@@ -154,7 +168,7 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
                 response_format={ "type": "json_object" }
             )
             decision = json.loads(response.choices[0].message.content)
-            print(f"🤖 IA Decidió: {decision}") # VER QUÉ PIENSA LA IA
+            print(f"🤖 IA Decidió: {decision}") 
 
             respuesta_texto = decision.get('respuesta_whatsapp', "Procesado.")
             accion = decision.get('accion')
@@ -165,10 +179,9 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
                 nombre = datos.get('nombre')
                 existe = db.query(Player).filter(Player.name == nombre).first()
                 if not existe:
-                    # Buscar CUALQUIER club (para evitar error de ID 1 fijo)
+                    # Buscar CUALQUIER club
                     club_demo = db.query(Club).first()
                     if not club_demo:
-                        # Si por milagro no hay club, crearlo ya
                         club_demo = Club(name="Club Demo", admin_phone="573152405542")
                         db.add(club_demo); db.commit(); db.refresh(club_demo)
 
@@ -191,7 +204,7 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
 
                 nuevo_torneo = Tournament(
                     name=datos.get('nombre'), 
-                    club_id=club_demo.id, # Usamos el ID real del club encontrado
+                    club_id=club_demo.id, 
                     status="inscription",
                     smart_data={"inscritos": []}
                 )

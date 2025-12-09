@@ -40,32 +40,54 @@ templates = Jinja2Templates(directory="templates")
 # --- UTILIDADES ---
 def get_db():
     db = SessionLocal()
-    try: yield db
-    finally: db.close()
+    try:
+        yield db
+    finally:
+        db.close()
 
 class ConnectionManager:
-    def __init__(self): self.active_connections = []
-    async def connect(self, websocket: WebSocket): await websocket.accept(); self.active_connections.append(websocket)
-    def disconnect(self, websocket: WebSocket): self.active_connections.remove(websocket)
+    def __init__(self):
+        self.active_connections = []
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+    
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+    
     async def broadcast(self, message: str):
-        for connection in self.active_connections: await connection.send_text(message)
+        for connection in self.active_connections:
+            await connection.send_text(message)
 
 manager = ConnectionManager()
 
 def enviar_whatsapp(telefono_destino, mensaje):
     url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
-    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
-    data = {"messaging_product": "whatsapp", "to": telefono_destino, "type": "text", "text": {"body": mensaje}}
-    try: requests.post(url, headers=headers, json=data)
-    except Exception as e: print(f"❌ Error enviando: {e}")
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "messaging_product": "whatsapp",
+        "to": telefono_destino,
+        "type": "text",
+        "text": {"body": mensaje}
+    }
+    try:
+        requests.post(url, headers=headers, json=data)
+    except Exception as e:
+        print(f"❌ Error enviando: {e}")
 
-# --- FUNCIÓN DE INTELIGENCIA DE CONTEXTO (EL CHISME) ---
+# --- FUNCIÓN DE INTELIGENCIA DE CONTEXTO ---
 def generar_contexto_club(db: Session):
     # 1. Buscar si hay torneos activos
     torneo = db.query(Tournament).filter(Tournament.status == "inscription").first()
     info_torneo = "No hay torneos activos en este momento."
     if torneo:
-        inscritos = len(torneo.smart_data.get("inscritos", []))
+        # Manejo seguro del JSON por si está vacío
+        datos = torneo.smart_data if torneo.smart_data else {}
+        inscritos = len(datos.get("inscritos", []))
         info_torneo = f"TORNEO ACTIVO: '{torneo.name}'. Estado: Inscripciones Abiertas. Inscritos actuales: {inscritos}."
     
     # 2. Top 3 del Ranking
@@ -80,7 +102,7 @@ def generar_contexto_club(db: Session):
 # --- RUTAS ---
 @app.on_event("startup")
 def startup_event():
-    # Crear el Club por defecto si no existe (Para el SaaS)
+    # Crear el Club por defecto si no existe
     db = SessionLocal()
     club = db.query(Club).first()
     if not club:
@@ -94,11 +116,15 @@ async def ver_ranking(request: Request, db: Session = Depends(get_db)):
     jugadores = db.query(Player).order_by(Player.elo.desc()).all()
     return templates.TemplateResponse("ranking.html", {"request": request, "jugadores": jugadores})
 
+# --- AQUÍ ESTABA EL ERROR, YA ESTÁ CORREGIDO (IDENTACIÓN) ---
 @app.websocket("/ws/ranking")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
-    try: while True: await websocket.receive_text()
-    except WebSocketDisconnect: manager.disconnect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 # --- WEBHOOK ---
 VERIFY_TOKEN = "alejandro_squash"
@@ -106,7 +132,8 @@ VERIFY_TOKEN = "alejandro_squash"
 @app.get("/webhook")
 async def verify_webhook(request: Request):
     params = request.query_params
-    if params.get("hub.verify_token") == VERIFY_TOKEN: return int(params.get("hub.challenge"))
+    if params.get("hub.verify_token") == VERIFY_TOKEN:
+        return int(params.get("hub.challenge"))
     return {"error": "Token invalido"}
 
 @app.post("/webhook")
@@ -120,14 +147,14 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
             texto_usuario = message['text']['body']
             print(f"📩 Mensaje: {texto_usuario}")
 
-            # 1. GENERAR CONTEXTO (Leer la mente del club)
+            # 1. GENERAR CONTEXTO
             contexto = generar_contexto_club(db)
 
-            # 2. PENSAR (Con el contexto inyectado)
+            # 2. PENSAR
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo-1106",
                 messages=[
-                    {"role": "system", "content": obtener_system_prompt(contexto)}, # <--- AQUÍ ENTRA EL CONTEXTO
+                    {"role": "system", "content": obtener_system_prompt(contexto)},
                     {"role": "user", "content": texto_usuario}
                 ],
                 response_format={ "type": "json_object" }
@@ -139,12 +166,10 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
             accion = decision.get('accion')
             datos = decision.get('datos', {})
 
-            # --- ACCIONES BÁSICAS ---
             if accion == 'crear_jugador':
                 nombre = datos.get('nombre')
                 existe = db.query(Player).filter(Player.name == nombre).first()
                 if not existe:
-                    # Asignar al Club por defecto (ID 1)
                     padrino = db.query(WhatsAppUser).filter_by(phone_number=telefono).first()
                     if not padrino:
                         padrino = WhatsAppUser(phone_number=telefono)
@@ -164,14 +189,12 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
                     db.add(match); db.commit()
                     await manager.broadcast("update")
 
-            # --- ACCIONES DE TORNEO (NUEVO) ---
             elif accion == 'crear_torneo':
-                # Crear el torneo en la BD
                 nuevo_torneo = Tournament(
                     name=datos.get('nombre'), 
                     club_id=1, 
                     status="inscription",
-                    smart_data={"inscritos": []} # Lista vacía inicial
+                    smart_data={"inscritos": []}
                 )
                 db.add(nuevo_torneo)
                 db.commit()

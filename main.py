@@ -4,7 +4,6 @@ import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Depends
 from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from models import Base, Player, Match, WhatsAppUser
@@ -12,7 +11,7 @@ from elo import calculate_elo
 from pydantic import BaseModel
 from openai import OpenAI
 
-# --- IMPORTAMOS EL NUEVO CEREBRO ---
+# --- IMPORTAMOS EL CEREBRO NUEVO ---
 from prompts import obtener_system_prompt
 
 # --- CONFIGURACIÓN INICIAL ---
@@ -67,8 +66,10 @@ def enviar_whatsapp(telefono_destino, mensaje):
         "text": {"body": mensaje}
     }
     try:
+        # Imprimimos para ver en el log si funciona
+        print(f"📤 Respondiendo a {telefono_destino}...")
         response = requests.post(url, headers=headers, json=data)
-        print(f"👉 Status Facebook: {response.status_code}")
+        print(f"👉 Facebook Status: {response.status_code}")
     except Exception as e:
         print(f"❌ Error enviando: {e}")
 
@@ -116,44 +117,49 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
             message = entry['messages'][0]
             telefono = message['from']
             texto_usuario = message['text']['body']
-            print(f"📩 Mensaje de {telefono}: {texto_usuario}")
+            print(f"📩 Mensaje recibido de {telefono}: {texto_usuario}")
 
-            # 1. PENSAR (Usando el nuevo cerebro prompts.py)
-            # Le pasamos el texto y él decide qué hacer según el Manual del Empleado
+            # 1. PENSAR (USANDO EL NUEVO PROMPTS.PY)
+            # Aquí es donde le decimos que lea el manual
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo-1106",
                 messages=[
-                    {"role": "system", "content": obtener_system_prompt()}, # <--- AQUÍ LEE EL MANUAL
+                    {"role": "system", "content": obtener_system_prompt()}, # <--- CONECTADO
                     {"role": "user", "content": texto_usuario}
                 ],
                 response_format={ "type": "json_object" }
             )
             decision = json.loads(response.choices[0].message.content)
             
-            # 2. ACTUAR SEGÚN LA NUEVA LÓGICA
+            # Ver qué decidió la IA en el log
+            print(f"🤖 Decisión IA: {decision['accion']} - Pensamiento: {decision.get('pensamiento')}")
+
+            # 2. ACTUAR
             respuesta_texto = decision.get('respuesta_whatsapp', "Procesado.")
             accion = decision.get('accion')
             datos = decision.get('datos', {})
 
-            if accion == 'crear_jugador': # Nombre actualizado según prompts.py
+            if accion == 'crear_jugador':
                 nombre = datos.get('nombre')
+                # Verificamos si el nombre existe
                 existe = db.query(Player).filter(Player.name == nombre).first()
                 if not existe:
-                    # Buscamos o creamos al "Dueño del Celular"
+                    # Buscamos el "Padrino" (Dueño del celular)
                     padrino = db.query(WhatsAppUser).filter_by(phone_number=telefono).first()
                     if not padrino:
+                        # Si es primera vez, creamos al dueño del celular
                         padrino = WhatsAppUser(phone_number=telefono)
                         db.add(padrino); db.commit()
                     
-                    # Creamos al jugador vinculado a ese celular
+                    # Creamos al jugador vinculado al dueño
                     nuevo = Player(name=nombre, owner_id=padrino.id)
                     db.add(nuevo); db.commit()
                     await manager.broadcast("update")
                 else:
-                    # Si ya existe, la IA ya generó un mensaje de error amable en 'respuesta_whatsapp'
+                    # La IA ya generó un mensaje de error amable
                     pass
 
-            elif accion == 'registrar_partido': # Nombre actualizado
+            elif accion == 'registrar_partido':
                 g = db.query(Player).filter(Player.name == datos.get('ganador')).first()
                 p = db.query(Player).filter(Player.name == datos.get('perdedor')).first()
                 if g and p:
@@ -162,11 +168,6 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
                     match = Match(player_1_id=g.id, player_2_id=p.id, winner_id=g.id, score=datos.get('score'))
                     db.add(match); db.commit()
                     await manager.broadcast("update")
-            
-            elif accion == 'crear_torneo':
-                # AQUÍ IRA LA LÓGICA DEL TORNEO PRÓXIMAMENTE
-                # Por ahora, solo confirmamos que entendimos la orden del Admin
-                print("🏆 Orden de crear torneo recibida.")
 
             # 3. RESPONDER
             enviar_whatsapp(telefono, respuesta_texto)

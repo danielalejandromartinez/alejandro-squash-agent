@@ -207,10 +207,17 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
         print(f"Error: {e}")
     return {"status": "ok"}
 
-# --- HERRAMIENTA DE REINICIO (SOLO PARA USO TÉCNICO) ---
 @app.get("/nuclear-reset")
 def nuclear_reset():
-    # Esto borra las tablas viejas y crea las nuevas con la estructura de Torneos
+    # 1. Borrar y Crear Tablas
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
-    return {"status": "✅ Base de datos renovada. ¡Alejandro está listo para los torneos!"}
+    
+    # 2. CREAR EL CLUB DEMO OBLIGATORIAMENTE
+    db = SessionLocal()
+    nuevo_club = Club(name="Club Demo", admin_phone="573152405542") # Tu número
+    db.add(nuevo_club)
+    db.commit()
+    db.close()
+    
+    return {"status": "✅ Base de datos renovada y Club Demo creado."}

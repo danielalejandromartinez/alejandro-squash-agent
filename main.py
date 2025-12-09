@@ -4,6 +4,7 @@ import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Depends
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from models import Base, Player, Match, WhatsAppUser
@@ -11,19 +12,20 @@ from elo import calculate_elo
 from pydantic import BaseModel
 from openai import OpenAI
 
+# --- IMPORTAMOS EL NUEVO CEREBRO ---
+from prompts import obtener_system_prompt
+
 # --- CONFIGURACIÓN INICIAL ---
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
 
-# --- LECTURA DE VARIABLES DE RENDER (ESTO ES LO IMPORTANTE) ---
-# Ahora leemos la llave fresca de Render, no la vieja del archivo
+# LECTURA DE VARIABLES DE RENDER
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
 # --- DATABASE ---
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./club_squash.db")
-# Ajuste para que funcione en la nube de Render
 if DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
     engine = create_engine(DATABASE_URL)
@@ -51,7 +53,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# --- FUNCIÓN DE ENVÍO CON REPORTE DE ERRORES ---
+# --- FUNCIÓN DE ENVÍO ---
 def enviar_whatsapp(telefono_destino, mensaje):
     url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
     headers = {
@@ -65,15 +67,10 @@ def enviar_whatsapp(telefono_destino, mensaje):
         "text": {"body": mensaje}
     }
     try:
-        print(f"📤 Intentando responder a {telefono_destino}...")
         response = requests.post(url, headers=headers, json=data)
-        
-        # AQUÍ ESTÁ EL DIAGNÓSTICO: Nos dirá si Meta acepta el mensaje
-        print(f"👉 Status de Facebook: {response.status_code}")
-        print(f"👉 Respuesta de Facebook: {response.text}")
-        
+        print(f"👉 Status Facebook: {response.status_code}")
     except Exception as e:
-        print(f"❌ Error crítico enviando: {e}")
+        print(f"❌ Error enviando: {e}")
 
 # --- RUTAS ---
 @app.get("/")
@@ -119,57 +116,59 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
             message = entry['messages'][0]
             telefono = message['from']
             texto_usuario = message['text']['body']
-            print(f"📩 Mensaje recibido de {telefono}: {texto_usuario}")
+            print(f"📩 Mensaje de {telefono}: {texto_usuario}")
 
-            # 2. PENSAR (Usamos el modelo rápido para evitar Timeout)
-            prompt = f"""
-            Eres Alejandro, árbitro de Squash. Analiza: "{texto_usuario}".
-            Si es resultado: {{ "accion": "partido", "ganador": "Nombre", "perdedor": "Nombre", "score": "3-0" }}
-            Si crea jugador: {{ "accion": "crear", "nombre": "Nombre" }}
-            Si saluda/pregunta: {{ "accion": "chat", "respuesta": "Respuesta corta y divertida" }}
-            Responde SOLO el JSON.
-            """
-            
-            # Usamos gpt-3.5-turbo para que sea veloz
+            # 1. PENSAR (Usando el nuevo cerebro prompts.py)
+            # Le pasamos el texto y él decide qué hacer según el Manual del Empleado
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo-1106",
-                messages=[{"role": "system", "content": prompt}],
+                messages=[
+                    {"role": "system", "content": obtener_system_prompt()}, # <--- AQUÍ LEE EL MANUAL
+                    {"role": "user", "content": texto_usuario}
+                ],
                 response_format={ "type": "json_object" }
             )
             decision = json.loads(response.choices[0].message.content)
             
-            # 3. ACTUAR
-            respuesta_texto = ""
-            if decision['accion'] == 'chat':
-                respuesta_texto = decision['respuesta']
-            elif decision['accion'] == 'crear':
-                nombre = decision['nombre']
+            # 2. ACTUAR SEGÚN LA NUEVA LÓGICA
+            respuesta_texto = decision.get('respuesta_whatsapp', "Procesado.")
+            accion = decision.get('accion')
+            datos = decision.get('datos', {})
+
+            if accion == 'crear_jugador': # Nombre actualizado según prompts.py
+                nombre = datos.get('nombre')
                 existe = db.query(Player).filter(Player.name == nombre).first()
                 if not existe:
+                    # Buscamos o creamos al "Dueño del Celular"
                     padrino = db.query(WhatsAppUser).filter_by(phone_number=telefono).first()
                     if not padrino:
                         padrino = WhatsAppUser(phone_number=telefono)
                         db.add(padrino); db.commit()
+                    
+                    # Creamos al jugador vinculado a ese celular
                     nuevo = Player(name=nombre, owner_id=padrino.id)
                     db.add(nuevo); db.commit()
                     await manager.broadcast("update")
-                    respuesta_texto = f"✅ ¡Listo! {nombre} creado."
                 else:
-                    respuesta_texto = f"⚠️ {nombre} ya existe."
-            elif decision['accion'] == 'partido':
-                g = db.query(Player).filter(Player.name == decision['ganador']).first()
-                p = db.query(Player).filter(Player.name == decision['perdedor']).first()
+                    # Si ya existe, la IA ya generó un mensaje de error amable en 'respuesta_whatsapp'
+                    pass
+
+            elif accion == 'registrar_partido': # Nombre actualizado
+                g = db.query(Player).filter(Player.name == datos.get('ganador')).first()
+                p = db.query(Player).filter(Player.name == datos.get('perdedor')).first()
                 if g and p:
                     nuevo_elo_g, nuevo_elo_p, puntos = calculate_elo(g.elo, p.elo)
                     g.elo = nuevo_elo_g; p.elo = nuevo_elo_p; g.wins += 1; p.losses += 1
-                    match = Match(player_1_id=g.id, player_2_id=p.id, winner_id=g.id, score=decision['score'])
+                    match = Match(player_1_id=g.id, player_2_id=p.id, winner_id=g.id, score=datos.get('score'))
                     db.add(match); db.commit()
                     await manager.broadcast("update")
-                    respuesta_texto = f"🏆 Anotado: {g.name} (+{puntos}) vs {p.name}."
-                else:
-                    respuesta_texto = "❌ Jugador no encontrado."
+            
+            elif accion == 'crear_torneo':
+                # AQUÍ IRA LA LÓGICA DEL TORNEO PRÓXIMAMENTE
+                # Por ahora, solo confirmamos que entendimos la orden del Admin
+                print("🏆 Orden de crear torneo recibida.")
 
-            # 4. RESPONDER
+            # 3. RESPONDER
             enviar_whatsapp(telefono, respuesta_texto)
 
     except Exception as e:

@@ -139,12 +139,15 @@ async def ver_club(request: Request, club_id: int, db: Session = Depends(get_db)
         "club_id": club_id # Pasamos el ID al HTML para el WebSocket
     })
 
-# WEBSOCKET CON CANAL (ROOM)
+# WEBSOCKET CON CANAL (ROOM) - CORREGIDO
 @app.websocket("/ws/{club_id}")
 async def websocket_endpoint(websocket: WebSocket, club_id: int):
     await manager.connect(websocket, club_id)
-    try: while True: await websocket.receive_text()
-    except WebSocketDisconnect: manager.disconnect(websocket, club_id)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, club_id)
 
 # --- WEBHOOK WHATSAPP ---
 VERIFY_TOKEN = "alejandro_squash"

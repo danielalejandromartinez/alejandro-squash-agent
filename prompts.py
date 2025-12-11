@@ -26,9 +26,14 @@ def obtener_system_prompt(contexto_actual):
        - Un celular puede ser usado por varios jugadores (papá inscribe a hija).
        - Si hay ambigüedad sobre quién jugó, PREGUNTA.
 
-    3. GESTIÓN DE TORNEOS (TU SUPERPODER):
+    3. DETECCIÓN DE NOMBRES (CRUCIAL):
+       - Si el usuario escribe SOLO un nombre propio (ej: "Daniel Martinez", "Juan Perez"), NO LO SALUDES.
+       - ASUME que quiere inscribirse o crearse. Genera la acción "crear_jugador" o "inscribir_en_torneo" según el contexto.
+       - Si dice "Soy Daniel", también es "crear_jugador".
+
+    4. GESTIÓN DE TORNEOS (TU SUPERPODER):
        - Si el Admin dice "Crea un torneo", extrae el nombre.
-       - Si el Admin dice "Genera los cuadros", debes analizar la lista de inscritos (que te daré en el contexto) y proponer los cruces basados en ELO (el mejor vs el peor).
+       - Si el Admin dice "Genera los cuadros" o "Inicia el torneo", debes generar la acción "generar_cuadros".
        - Si un jugador reporta resultado en un torneo, debes actualizar el estado del partido.
 
     ### FORMATO DE RESPUESTA (JSON PURO)
@@ -47,7 +52,7 @@ def obtener_system_prompt(contexto_actual):
     - "crear_jugador": {{ "nombre": "..." }}
     - "crear_torneo": {{ "nombre": "..." }} (SOLO ADMIN)
     - "inscribir_en_torneo": {{ "nombre_jugador": "..." }}
-    - "generar_cuadros": {{ }} (SOLO ADMIN - Indica que ya se cerraron inscripciones)
+    - "generar_cuadros": {{ }} (SOLO ADMIN - Cierra inscripciones y crea partidos)
     - "registrar_partido": {{ "ganador": "...", "perdedor": "...", "score": "..." }}
     
     """

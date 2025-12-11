@@ -93,8 +93,7 @@ def generar_contexto_club(db: Session, club_id: int):
         if inscritos_ids:
             jugadores = db.query(Player).filter(Player.id.in_(inscritos_ids)).all()
             nombres = [p.name for p in jugadores]
-        estado_txt = "Jugando" if torneo.status == "playing" else "Inscripciones Abiertas"
-        info_torneo = f"TORNEO ACTIVO: '{torneo.name}'. Estado: {estado_txt}. Inscritos: {', '.join(nombres)}."
+        info_torneo = f"TORNEO ACTIVO: '{torneo.name}'. Estado: {torneo.status}. Inscritos: {', '.join(nombres)}."
     
     top = db.query(Player).filter(Player.club_id == club_id).order_by(Player.elo.desc()).limit(3).all()
     ranking_txt = ", ".join([f"{p.name} ({p.elo})" for p in top])
@@ -122,32 +121,24 @@ async def ver_club(request: Request, club_id: int, db: Session = Depends(get_db)
     torneo = db.query(Tournament).filter(Tournament.club_id == club_id, Tournament.status != "finished").first()
     
     jugadores = []
-    partidos_torneo = []
     titulo = f"Ranking - {club.name}"
     modo = "ranking"
 
-    if torneo:
+    if torneo and torneo.status == "inscription":
+        modo = "torneo"
+        titulo = f"Inscritos: {torneo.name}"
+        
         datos = torneo.smart_data if torneo.smart_data else {}
+        ids = datos.get("inscritos", [])
         
-        if torneo.status == "inscription":
-            modo = "torneo_inscripcion"
-            titulo = f"Inscritos: {torneo.name}"
-            ids = datos.get("inscritos", [])
-            if ids:
-                jugadores = db.query(Player).filter(Player.id.in_(ids)).all()
-        
-        elif torneo.status == "playing":
-            modo = "torneo_brackets"
-            titulo = f"En Juego: {torneo.name}"
-            partidos_torneo = db.query(Match).filter(Match.tournament_id == torneo.id).all()
-
+        if ids:
+            jugadores = db.query(Player).filter(Player.id.in_(ids)).all()
     else:
         jugadores = db.query(Player).filter(Player.club_id == club_id).order_by(Player.elo.desc()).all()
 
     return templates.TemplateResponse("ranking.html", {
         "request": request,
         "jugadores": jugadores,
-        "partidos": partidos_torneo,
         "titulo": titulo,
         "modo": modo,
         "club_id": club_id
@@ -175,6 +166,20 @@ async def websocket_endpoint(websocket: WebSocket, club_id: int):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket, club_id)
+
+# --- HERRAMIENTA DE REINICIO (ESTA FALTABA) ---
+@app.get("/nuclear-reset")
+def nuclear_reset():
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    # Crear club inmediatamente
+    db = SessionLocal()
+    if not db.query(Club).filter_by(id=1).first():
+        nuevo_club = Club(name="Club Demo", admin_phone="573152405542")
+        db.add(nuevo_club)
+        db.commit()
+    db.close()
+    return {"status": "✅ Base de datos renovada con CATEGORÍAS."}
 
 # --- WEBHOOK ---
 VERIFY_TOKEN = "alejandro_squash"
@@ -237,7 +242,7 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
                     await manager.broadcast("update", club_usuario.id)
 
             elif accion == 'crear_torneo':
-                anteriores = db.query(Tournament).filter(Tournament.club_id == club_usuario.id, Tournament.status != "finished").all()
+                anteriores = db.query(Tournament).filter(Tournament.club_id == club_usuario.id, Tournament.status == "inscription").all()
                 for t in anteriores:
                     t.status = "finished"
                 nuevo_torneo = Tournament(
@@ -263,39 +268,21 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
                     if jugador.id not in lista_inscritos:
                         lista_inscritos.append(jugador.id)
                         datos_actuales["inscritos"] = lista_inscritos
+                        
                         torneo.smart_data = datos_actuales
                         flag_modified(torneo, "smart_data")
+                        
                         db.add(torneo)
                         db.commit()
                         db.refresh(torneo)
+                        
+                        print(f"✅ GUARDADO EN BD: {torneo.smart_data}")
                         await manager.broadcast("update", club_usuario.id)
                         respuesta_texto = f"✅ {nombre_jugador} inscrito en {torneo.name}."
                     else:
                         respuesta_texto = f"⚠️ {nombre_jugador} ya estaba inscrito."
                 else:
                     respuesta_texto = "❌ No se pudo inscribir."
-
-            elif accion == 'generar_cuadros':
-                torneo = db.query(Tournament).filter(Tournament.club_id == club_usuario.id, Tournament.status == "inscription").first()
-                if torneo:
-                    ids = torneo.smart_data.get("inscritos", [])
-                    if len(ids) >= 2:
-                        jugadores = db.query(Player).filter(Player.id.in_(ids)).order_by(Player.elo.desc()).all()
-                        n = len(jugadores)
-                        for i in range(n // 2):
-                            p1 = jugadores[i]
-                            p2 = jugadores[n - 1 - i]
-                            match = Match(player_1_id=p1.id, player_2_id=p2.id, tournament_id=torneo.id, score="VS", is_finished=False)
-                            db.add(match)
-                        
-                        torneo.status = "playing"
-                        db.commit()
-                        await manager.broadcast("update", club_usuario.id)
-                        respuesta_texto = f"⚔️ ¡Cuadros generados! El torneo {torneo.name} ha comenzado."
-                    else:
-                        respuesta_texto = "⚠️ Necesitas al menos 2 jugadores."
-                else:
-                    respuesta_texto = "❌ No hay torneo en inscripción."
 
             enviar_whatsapp(telefono, respuesta_texto)
 

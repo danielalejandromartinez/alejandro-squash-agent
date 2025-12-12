@@ -1,91 +1,44 @@
 import os
 import json
-import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Depends
 from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
-from models import Base, Player, Match, WhatsAppUser, Club, Tournament
+
+# --- IMPORTAMOS TUS NUEVOS ÓRGANOS (CORREGIDO) ---
+from database import engine, get_db # <--- AQUÍ QUITAMOS 'Base'
+from models import Base, Player, Match, WhatsAppUser, Club, Tournament # <--- AQUÍ AGREGAMOS 'Base'
+from connection_manager import manager
+from whatsapp_service import enviar_whatsapp
+from ai_service import generar_contexto_club, consultar_alejandro
 from elo import calculate_elo
-from pydantic import BaseModel
-from openai import OpenAI
-from prompts import obtener_system_prompt
 
 # --- CONFIGURACIÓN ---
 load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=api_key)
-WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
+VERIFY_TOKEN = "alejandro_squash"
 
-# --- DATABASE ---
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./club_squash.db")
-if DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
-    engine = create_engine(DATABASE_URL)
-else:
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-    
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Crear tablas en la BD
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-def get_db():
-    db = SessionLocal()
-    try: yield db
-    finally: db.close()
-
-# --- GESTOR WEBSOCKETS ---
-class ConnectionManager:
-    def __init__(self): self.active_connections = {}
-    async def connect(self, websocket: WebSocket, club_id: int):
-        await websocket.accept()
-        if club_id not in self.active_connections: self.active_connections[club_id] = []
-        self.active_connections[club_id].append(websocket)
-    def disconnect(self, websocket: WebSocket, club_id: int):
-        if club_id in self.active_connections and websocket in self.active_connections[club_id]:
-            self.active_connections[club_id].remove(websocket)
-    async def broadcast(self, message: str, club_id: int):
-        if club_id in self.active_connections:
-            for connection in self.active_connections[club_id]: await connection.send_text(message)
-
-manager = ConnectionManager()
-
-def enviar_whatsapp(telefono_destino, mensaje):
-    url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
-    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
-    data = {"messaging_product": "whatsapp", "to": telefono_destino, "type": "text", "text": {"body": mensaje}}
-    try: requests.post(url, headers=headers, json=data)
-    except: pass
-
-# --- CONTEXTO ---
-def generar_contexto_club(db: Session, club_id: int):
-    torneo = db.query(Tournament).filter(Tournament.club_id == club_id, Tournament.status != "finished").first()
-    info_torneo = "No hay torneos activos."
-    if torneo:
-        datos = torneo.smart_data if torneo.smart_data else {}
-        inscritos = len(datos.get("inscritos", []))
-        cat = torneo.category if hasattr(torneo, 'category') else "General"
-        info_torneo = f"TORNEO ACTIVO: '{torneo.name}' ({cat}). Estado: {torneo.status}. Inscritos: {inscritos}."
-    return f"CLUB ID {club_id}:\n- {info_torneo}"
-
-# --- RUTAS ---
+# --- RUTAS DE INICIO ---
 @app.on_event("startup")
 def startup_event():
-    db = SessionLocal()
+    db = next(get_db()) 
     if not db.query(Club).filter_by(id=1).first():
+        print("🏗️ Creando Club Demo...")
         db.add(Club(name="Club Demo", admin_phone="573152405542"))
         db.commit()
     db.close()
 
 @app.get("/")
-async def home(): return "Ve a /club/1"
+async def home():
+    return "Alejandro está vivo. Ve a /club/1 para ver el ranking."
 
+# --- VISTA WEB ---
 @app.get("/club/{club_id}")
 async def ver_club(request: Request, club_id: int, db: Session = Depends(get_db)):
     club = db.query(Club).filter(Club.id == club_id).first()
@@ -108,6 +61,7 @@ async def ver_club(request: Request, club_id: int, db: Session = Depends(get_db)
             ids = datos.get("inscritos", [])
             if ids:
                 jugadores = db.query(Player).filter(Player.id.in_(ids)).all()
+        
         elif torneo.status == "playing":
             modo = "torneo_brackets"
             titulo = f"En Juego: {torneo.name}"
@@ -120,6 +74,17 @@ async def ver_club(request: Request, club_id: int, db: Session = Depends(get_db)
         "titulo": titulo, "modo": modo, "club_id": club_id
     })
 
+# --- WEBSOCKETS ---
+@app.websocket("/ws/{club_id}")
+async def websocket_endpoint(websocket: WebSocket, club_id: int):
+    await manager.connect(websocket, club_id)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, club_id)
+
+# --- HERRAMIENTAS TÉCNICAS ---
 @app.get("/debug")
 def debug_db(db: Session = Depends(get_db)):
     torneo = db.query(Tournament).first()
@@ -128,31 +93,25 @@ def debug_db(db: Session = Depends(get_db)):
     if torneo:
         info_torneo = {"nombre": torneo.name, "status": torneo.status, "smart_data": torneo.smart_data}
     lista_jugadores = [{"id": p.id, "nombre": p.name, "club": p.club_id} for p in jugadores]
-    return {"TORNEO_ACTUAL": info_torneo, "JUGADORES_EN_BD": lista_jugadores}
+    return {"TORNEO": info_torneo, "JUGADORES": lista_jugadores}
 
 @app.get("/nuclear-reset")
 def nuclear_reset():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
+    db = next(get_db())
     if not db.query(Club).filter_by(id=1).first():
         db.add(Club(name="Club Demo", admin_phone="573152405542"))
         db.commit()
     db.close()
-    return {"status": "✅ Base de datos renovada."}
+    return {"status": "✅ Base de datos renovada (Modular)."}
 
-@app.websocket("/ws/{club_id}")
-async def websocket_endpoint(websocket: WebSocket, club_id: int):
-    await manager.connect(websocket, club_id)
-    try: while True: await websocket.receive_text()
-    except WebSocketDisconnect: manager.disconnect(websocket, club_id)
-
-# --- WEBHOOK ---
-VERIFY_TOKEN = "alejandro_squash"
+# --- WHATSAPP ---
 @app.get("/webhook")
 async def verify_webhook(request: Request):
     params = request.query_params
-    if params.get("hub.verify_token") == VERIFY_TOKEN: return int(params.get("hub.challenge"))
+    if params.get("hub.verify_token") == VERIFY_TOKEN:
+        return int(params.get("hub.challenge"))
     return {"error": "Token invalido"}
 
 @app.post("/webhook")
@@ -166,43 +125,26 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
             texto_usuario = message['text']['body']
             print(f"📩 De {telefono}: {texto_usuario}")
 
-            # 1. IDENTIFICAR CLUB Y ROL
+            # 1. IDENTIFICAR CLUB
             club_usuario = db.query(Club).filter(Club.admin_phone == telefono).first()
-            rol_usuario = "JUGADOR" # Por defecto
-
-            if club_usuario:
-                rol_usuario = "ADMIN" # ¡Es el dueño!
-            else:
-                # Si no es admin, buscamos si es jugador o asignamos al Demo
+            if not club_usuario:
                 padrino = db.query(WhatsAppUser).filter_by(phone_number=telefono).first()
-                if padrino and padrino.players: club_usuario = padrino.players[0].club
-                if not club_usuario: club_usuario = db.query(Club).filter(Club.id == 1).first()
-            
-            # --- PARCHE DE SEGURIDAD: Si el número coincide con el hardcodeado, es ADMIN ---
-            if telefono == "573152405542":
-                rol_usuario = "ADMIN"
+                if padrino and padrino.players:
+                    club_usuario = padrino.players[0].club
+            if not club_usuario:
+                club_usuario = db.query(Club).filter(Club.id == 1).first()
 
-            print(f"👤 Rol detectado: {rol_usuario}")
-
+            # 2. CONSULTAR AL CEREBRO (AI SERVICE)
             contexto = generar_contexto_club(db, club_usuario.id)
-
-            # 2. PENSAR (Pasamos el ROL explícito)
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo-1106",
-                messages=[
-                    {"role": "system", "content": obtener_system_prompt(contexto, rol_usuario)},
-                    {"role": "user", "content": texto_usuario}
-                ],
-                response_format={ "type": "json_object" }
-            )
-            decision = json.loads(response.choices[0].message.content)
-            print(f"🤖 IA: {decision['accion']}")
+            decision = consultar_alejandro(texto_usuario, contexto, telefono)
+            
+            print(f"🤖 IA: {decision.get('accion')}")
 
             respuesta_texto = decision.get('respuesta_whatsapp', "Procesado.")
             accion = decision.get('accion')
             datos = decision.get('datos', {})
 
-            # 3. ACTUAR
+            # 3. EJECUTAR ACCIÓN (MANOS)
             if accion == 'crear_jugador':
                 nombre = datos.get('nombre')
                 categoria = datos.get('categoria', 'General')
@@ -275,8 +217,9 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
                 else:
                     respuesta_texto = "❌ No hay torneo en inscripción."
 
+            # 4. RESPONDER
             enviar_whatsapp(telefono, respuesta_texto)
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Error procesando: {e}")
     return {"status": "ok"}

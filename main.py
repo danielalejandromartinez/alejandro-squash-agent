@@ -173,7 +173,6 @@ def nuclear_reset():
     db.close()
     return {"status": "✅ Base de datos renovada con CATEGORÍAS."}
 
-# --- WEBSOCKET CORREGIDO (AHORA SÍ) ---
 @app.websocket("/ws/{club_id}")
 async def websocket_endpoint(websocket: WebSocket, club_id: int):
     await manager.connect(websocket, club_id)
@@ -214,10 +213,11 @@ async def receive_whatsapp(request: Request, db: Session = Depends(get_db)):
 
             contexto = generar_contexto_club(db, club_usuario.id)
 
+            # PENSAR (AQUÍ ESTÁ EL ARREGLO: PASAMOS EL TELÉFONO)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo-1106",
                 messages=[
-                    {"role": "system", "content": obtener_system_prompt(contexto)},
+                    {"role": "system", "content": obtener_system_prompt(contexto, telefono)}, # <--- ¡ESTO FALTABA!
                     {"role": "user", "content": texto_usuario}
                 ],
                 response_format={ "type": "json_object" }
